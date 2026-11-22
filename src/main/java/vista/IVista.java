@@ -16,4 +16,13 @@ public interface IVista {
 
     /** Muestra un aviso puntual al usuario. */
     void mostrarAlertaNotificacion(String msj);
+
+    /**
+     * Muestra la factura de un pedido pagado.
+     * Es un método default para no obligar a cambiar las vistas existentes
+     * (por ejemplo, las vistas falsas de las pruebas).
+     */
+    default void mostrarFactura(Pedido p, String metodoPago) {
+        mostrarAlertaNotificacion("\n" + FormatoPedido.factura(p, metodoPago));
+    }
 }
