@@ -1,101 +1,166 @@
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Scanner;
 
+import javax.swing.SwingUtilities;
+
 import controlador.PedidoController;
-import modelo.Combo;
 import modelo.DescuentoHoraFelizSushi;
 import modelo.PantallaBarraSushi;
 import modelo.PantallaDespachador;
 import modelo.Pedido;
-import modelo.Producto;
+import modelo.SinDescuento;
 import modelo.SistemaCaja;
 import vista.ConsolaView;
 import vista.GuiView;
 import vista.IVista;
 
 /**
- * Ensambla el MVC y ejecuta una demostración de los 6 patrones:
- * Decorator, Builder, Strategy, State, Command y Observer.
+ * Punto de entrada. Ensambla el MVC y deja el sistema listo para operarlo en vivo:
+ *   1 = menú interactivo en consola
+ *   2 = ventana Swing interactiva
  *
  * Uso:  java Main consola   |   java Main gui   |   java Main  (pregunta)
+ *
+ * Main es la "raíz de composición": crea el modelo, la vista y el controlador,
+ * y conecta las acciones del usuario (botones / opciones del menú) con los
+ * métodos de PedidoController. Las vistas nunca tocan el modelo directamente.
  */
 public class Main {
 
-    public static void main(String[] args) {
-        boolean usarGui = elegirGui(args);
+    /** Carta de rollos maki: nombre -> precio base. Se usa para mostrar y para crear rollos. */
+    private static final Map<String, Double> CARTA_ROLLOS;
 
-        // ---------- Modelo + observers ----------
-        Pedido pedido = new Pedido();
-        pedido.suscribir(new PantallaBarraSushi());
-        pedido.suscribir(new PantallaDespachador());
-        pedido.suscribir(new SistemaCaja());
-
-        // ---------- Vista ----------
-        IVista vista;
-        GuiView gui = null;
-        if (usarGui) {
-            gui = new GuiView();
-            vista = gui;
-        } else {
-            vista = new ConsolaView();
-        }
-
-        // ---------- Controlador ----------
-        PedidoController controlador = new PedidoController(pedido, vista);
-        if (gui != null) {
-            gui.setAcciones(controlador::avanzarEstado,
-                            controlador::cancelarPedido,
-                            controlador::deshacerUltimaAccion);
-        }
-
-        controlador.iniciar();
-
-        // ---------- Demo ----------
-        titulo("1. BUILDER: armando un combo Bento Box");
-        Combo bento = controlador.crearComboBentoBox();
-        controlador.agregarProducto(bento);
-
-        titulo("2. DECORATOR: Rollo Dragón + Tempura + Extra Salsa de Anguila");
-        Producto dragon = controlador.crearRolloMaki("Dragón", 10.00, true, 1);
-        controlador.agregarProducto(dragon);
-
-        titulo("3. COMMAND: se agrega un Kappa por error y se deshace");
-        Producto kappa = controlador.crearRolloMaki("Kappa", 6.00, false, 0);
-        controlador.agregarProducto(kappa);
-        controlador.deshacerUltimaAccion();
-
-        titulo("4. STRATEGY: se aplica el descuento de Hora Feliz");
-        controlador.aplicarDescuento(new DescuentoHoraFelizSushi());
-
-        if (usarGui) {
-            vista.mostrarAlertaNotificacion(
-                    "Demo cargada. Usa los botones para avanzar el estado y ver los observers en la consola.");
-            return; // la ventana sigue abierta y responde a los botones
-        }
-
-        titulo("5. STATE + OBSERVER: RECIBIDO -> EN PREPARACIÓN");
-        controlador.avanzarEstado();
-
-        titulo("6. STATE + OBSERVER: EN PREPARACIÓN -> DESPACHADO");
-        controlador.avanzarEstado();
-
-        titulo("7. Transiciones no válidas sobre un pedido DESPACHADO");
-        controlador.cancelarPedido();
-        controlador.deshacerUltimaAccion();
-        controlador.agregarProducto(controlador.crearRolloMaki("California", 8.00, false, 0));
+    static {
+        Map<String, Double> carta = new LinkedHashMap<>();
+        carta.put("California", 8.00);
+        carta.put("Philadelphia", 9.50);
+        carta.put("Dragón", 10.00);
+        carta.put("Kappa", 6.00);
+        CARTA_ROLLOS = Collections.unmodifiableMap(carta);
     }
 
-    private static boolean elegirGui(String[] args) {
+    /** Métodos de pago que se ofrecen al facturar. */
+    private static final List<String> METODOS_PAGO = Collections.unmodifiableList(Arrays.asList(
+            "Efectivo",
+            "Tarjeta de Crédito/Débito",
+            "Nequi / Transferencia"));
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        if (elegirGui(args, scanner)) {
+            SwingUtilities.invokeLater(Main::iniciarGui);
+        } else {
+            iniciarConsola(scanner);
+        }
+    }
+
+    // =====================================================================
+    // Arranque de cada modo
+    // =====================================================================
+
+    private static void iniciarConsola(Scanner scanner) {
+        ConsolaView consola = new ConsolaView(scanner, CARTA_ROLLOS, METODOS_PAGO);
+        PedidoController controlador = crearControlador(consola);
+        consola.setAcciones(new AccionesControlador(controlador));
+
+        controlador.iniciar();
+        consola.ejecutarMenu(); // bucle interactivo hasta que el usuario elige "Salir"
+    }
+
+    private static void iniciarGui() {
+        GuiView gui = new GuiView(CARTA_ROLLOS, METODOS_PAGO);
+        PedidoController controlador = crearControlador(gui);
+        gui.setAcciones(new AccionesControlador(controlador));
+
+        controlador.iniciar(); // muestra la ventana con el pedido vacío
+    }
+
+    /**
+     * Crea el primer pedido y el controlador, y registra las pantallas a través
+     * del controlador para que se vuelvan a suscribir en cada pedido nuevo.
+     */
+    private static PedidoController crearControlador(IVista vista) {
+        PedidoController controlador = new PedidoController(new Pedido(), vista);
+        controlador.registrarObserver(new PantallaBarraSushi());
+        controlador.registrarObserver(new PantallaDespachador());
+        controlador.registrarObserver(new SistemaCaja());
+        return controlador;
+    }
+
+    private static boolean elegirGui(String[] args, Scanner scanner) {
         if (args.length > 0) {
-            return args[0].equalsIgnoreCase("gui");
+            return args[0].equalsIgnoreCase("gui") || args[0].equals("2");
         }
         System.out.print("Elige la vista (1 = Consola, 2 = GUI): ");
-        Scanner scanner = new Scanner(System.in);
         String opcion = scanner.hasNextLine() ? scanner.nextLine().trim() : "1";
         return opcion.equals("2");
     }
 
-    private static void titulo(String texto) {
-        System.out.println();
-        System.out.println("==================== " + texto + " ====================");
+    // =====================================================================
+    // Puente vista -> controlador
+    // =====================================================================
+
+    /**
+     * Traduce cada acción del usuario en una llamada a PedidoController.
+     * Implementa las dos interfaces de acciones (consola y GUI), que tienen
+     * los mismos métodos, así ambas vistas comparten exactamente el mismo flujo.
+     */
+    private static final class AccionesControlador implements ConsolaView.Acciones, GuiView.Acciones {
+
+        private final PedidoController controlador;
+
+        AccionesControlador(PedidoController controlador) {
+            this.controlador = Objects.requireNonNull(controlador, "El controlador no puede ser null.");
+        }
+
+        @Override
+        public void agregarRollo(String tipo, boolean conTempura, int extrasSalsaAnguila) {
+            Double precio = CARTA_ROLLOS.get(tipo);
+            if (precio == null) {
+                throw new IllegalArgumentException("Rollo desconocido: " + tipo);
+            }
+            controlador.agregarProducto(
+                    controlador.crearRolloMaki(tipo, precio, conTempura, extrasSalsaAnguila));
+        }
+
+        @Override
+        public void agregarComboBentoBox() {
+            controlador.agregarProducto(controlador.crearComboBentoBox());
+        }
+
+        @Override
+        public void cambiarHoraFeliz(boolean activar) {
+            controlador.aplicarDescuento(activar ? new DescuentoHoraFelizSushi() : new SinDescuento());
+        }
+
+        @Override
+        public void deshacer() {
+            controlador.deshacerUltimaAccion();
+        }
+
+        @Override
+        public void avanzarEstado() {
+            controlador.avanzarEstado();
+        }
+
+        @Override
+        public void cancelarPedido() {
+            controlador.cancelarPedido();
+        }
+
+        @Override
+        public void pagar(String metodoPago) {
+            controlador.pagarPedido(metodoPago);
+        }
+
+        @Override
+        public void nuevoPedido() {
+            controlador.nuevoPedido();
+        }
     }
 }
