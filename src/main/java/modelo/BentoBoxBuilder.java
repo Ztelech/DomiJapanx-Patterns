@@ -58,7 +58,7 @@ public class BentoBoxBuilder implements ComboBuilder {
         private final double precio;
 
         private ArticuloSimple(String descripcion, double precio) {
-            if (descripcion == null || descripcion.isBlank()) {
+            if (descripcion == null || descripcion.trim().isEmpty()) {
                 throw new IllegalArgumentException("La descripción no puede estar vacía.");
             }
             if (precio < 0) {

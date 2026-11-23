@@ -12,7 +12,7 @@ public class RolloMakiBase implements Producto {
     private final double precioBase;
 
     public RolloMakiBase(String nombre, double precioBase) {
-        if (nombre == null || nombre.isBlank()) {
+        if (nombre == null || nombre.trim().isEmpty()) {
             throw new IllegalArgumentException("El nombre del rollo no puede estar vacío.");
         }
         if (precioBase < 0) {

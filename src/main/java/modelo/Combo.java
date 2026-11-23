@@ -20,7 +20,7 @@ public class Combo implements Producto {
     private Producto acompanamiento;
 
     public Combo(String nombre) {
-        if (nombre == null || nombre.isBlank()) {
+        if (nombre == null || nombre.trim().isEmpty()) {
             throw new IllegalArgumentException("El nombre del combo no puede estar vacío.");
         }
         this.nombre = nombre.trim();
